@@ -1,2 +1,7 @@
 jdk:
   - openjdk17
+
+# Skip the :sample subproject (its release signingConfig requires a keystore
+# that JitPack doesn't have); only the :library artifact needs to be published.
+install:
+  - ./gradlew clean :library:publishToMavenLocal -x test -x lint -x signMavenPublication
