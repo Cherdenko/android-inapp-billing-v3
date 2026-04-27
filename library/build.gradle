@@ -55,13 +55,21 @@ dependencies {
 
 task androidJavadocs(type: Javadoc) {
     source = android.sourceSets.main.java.srcDirs
-    classpath += project.files(android.getBootClasspath())
     android.libraryVariants.all { variant ->
         if (variant.name == 'release') {
             owner.classpath += variant.javaCompileProvider.get().classpath
         }
     }
     exclude '**/R.html', '**/R.*.html', '**/index.html'
+
+    // AGP 8 no longer puts android.jar on variant.javaCompileProvider.classpath, and
+    // android.bootClasspath isn't populated at script-config time; resolve at execution.
+    doFirst {
+        classpath += files(android.bootClasspath)
+    }
+
+    // Don't break publishing on missing-comment / deprecation javadoc warnings.
+    failOnError = false
 }
 
 task androidJavadocsJar(type: Jar, dependsOn: androidJavadocs) {
