@@ -32,7 +32,11 @@ jobs:
 
       - name: Set up build properties
         run: |
-          echo 'licenceKey=""' > local.properties
+          # Raw value, NOT pre-quoted: sample/build.gradle wraps this in quotes
+          # itself when generating the BuildConfig field. Writing `licenceKey=""`
+          # here produced `""""` in BuildConfig.java, which javac rejects as a
+          # malformed text block.
+          echo 'licenceKey=' > local.properties
           echo 'android.useAndroidX=true' >> gradle.properties
           echo 'android.enableJetifier=true' >> gradle.properties
 
