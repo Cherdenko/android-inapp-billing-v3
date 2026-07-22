@@ -340,7 +340,33 @@ public class BillingProcessor extends BillingBase
 	 */
 	public void initialize()
 	{
-		if (billingService != null && !billingService.isReady())
+		if (billingService == null)
+		{
+			return;
+		}
+
+		// enableAutoServiceReconnection() lets the Play Billing client bring the
+		// connection up on its own. When it reports ready before we ever call
+		// startConnection(), our BillingClientStateListener is never invoked --
+		// neither the success nor the failure branch. HistoryInitializationTask
+		// used to hang off that callback exclusively, so the owned-purchases
+		// cache was never loaded: isPurchased() stayed false, onBillingInitialized()
+		// never fired, and callers were pushed into a fresh purchase for a product
+		// the user already owned (Google then answers ITEM_ALREADY_OWNED).
+		// Purchasing still worked throughout, which is why this hid so well.
+		// Schedule the task here too, guarded by isHistoryTaskExecuted so it can
+		// never run twice.
+		if (billingService.isReady())
+		{
+			if (!isHistoryTaskExecuted)
+			{
+				new HistoryInitializationTask().execute();
+			}
+			return;
+		}
+
+		// Not ready yet: bring the connection up ourselves. The listener below
+		// schedules HistoryInitializationTask on success.
 		{
 			billingService.startConnection(new BillingClientStateListener()
 			{
