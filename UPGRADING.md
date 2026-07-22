@@ -29,6 +29,54 @@ to `BILLING_UNAVAILABLE`. If your `IBillingHandler.onBillingError` branches on
 the specific error code for that scenario, update it — the library passes the
 code through unchanged.
 
+#### Free trials and introductory prices are now filtered by eligibility
+
+This one **can bite you at runtime**, and it cannot be translated away.
+
+Before Play Billing 5, a subscription's free trial and introductory price were
+properties of the SKU. `SkuDetails.subscriptionFreeTrialPeriod` was populated
+for every caller, whether or not that particular user could still claim the
+trial, and launching a purchase applied whichever offer the user was entitled
+to automatically.
+
+From Billing 5 on, trials and introductory prices are **separate offers**, and
+`ProductDetails.getSubscriptionOfferDetails()` only returns the offers the
+signed-in user is **currently eligible for**. A user who has already used the
+trial gets the base plan alone.
+
+What that means for the legacy `SkuDetails` API:
+
+* `subscriptionFreeTrialPeriod` is `""` and `haveTrialPeriod` is `false`
+  whenever the user is not eligible. The same applies to
+  `introductoryPricePeriod` / `introductoryPriceLong` / `introductoryPriceCycles`.
+* This is **normal**, not an error. There is no way for the library to report a
+  trial that Play did not return.
+
+**Guard your code accordingly.** Feeding those fields straight into a parser
+crashes for every ineligible user:
+
+```java
+// Crashes with DateTimeParseException once the user is no longer eligible:
+Period p = Period.parse(details.subscriptionFreeTrialPeriod);
+
+// Do this instead:
+if (details.haveTrialPeriod && !TextUtils.isEmpty(details.subscriptionFreeTrialPeriod))
+{
+    Period p = Period.parse(details.subscriptionFreeTrialPeriod);
+    // ...
+}
+```
+
+The library does pick the **best offer the user is eligible for** — a free
+trial first, then a discounted introductory offer, then the base plan — both
+when filling in `SkuDetails` and when launching the purchase flow, so an
+eligible user still gets the trial exactly as before 3.0. Only genuinely
+ineligible users see empty fields.
+
+If you need the full offer tree instead of this flattened view, use
+`getSubscriptionProductDetailsAsync` and read
+`ProductDetails.getSubscriptionOfferDetails()` directly.
+
 That's it for most apps — the following sections only apply if you read
 product details directly.
 

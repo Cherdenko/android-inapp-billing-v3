@@ -916,17 +916,12 @@ public class BillingProcessor extends BillingBase
 								Constants.BILLING_ERROR_FAILED_TO_INITIALIZE_PURCHASE, null);
 						return;
 					}
-					// Prefer the base plan (null offerId); fall back to the first offer.
-					ProductDetails.SubscriptionOfferDetails chosen = offers.get(0);
-					for (ProductDetails.SubscriptionOfferDetails offer : offers)
-					{
-						if (offer.getOfferId() == null)
-						{
-							chosen = offer;
-							break;
-						}
-					}
-					pdpBuilder.setOfferToken(chosen.getOfferToken());
+					// Prefer a free trial, then an introductory offer, then the base
+					// plan -- the same order SkuDetails reports, so what the caller
+					// was shown is what actually gets purchased. Picking the base
+					// plan unconditionally charged full price even when the user was
+					// eligible for a trial, which pre-3.0 granted automatically.
+					pdpBuilder.setOfferToken(SkuDetails.pickBestOffer(offers).getOfferToken());
 				}
 
 				BillingFlowParams.Builder billingFlowParamsBuilder = BillingFlowParams.newBuilder()

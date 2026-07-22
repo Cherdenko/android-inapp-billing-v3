@@ -172,6 +172,59 @@ public class SkuDetailsFromProductDetailsTest
         assertEquals(0L, result.introductoryPriceLong);
     }
 
+    /**
+     * Play reports a plain one-off free trial as NON_RECURRING, not
+     * FINITE_RECURRING. Classifying trials by recurrence mode dropped these
+     * entirely: subscriptionFreeTrialPeriod came back empty and
+     * haveTrialPeriod false, which crashed callers that fed the period
+     * straight into a date parser.
+     */
+    @Test
+    public void subsWithNonRecurringFreeTrial_classifiesTrialAndRegular() throws JSONException
+    {
+        ProductDetails.PricingPhase trial = mockPhase(
+                ProductDetails.RecurrenceMode.NON_RECURRING,
+                0L, "Free", "USD", "P7D", 0);
+        ProductDetails.PricingPhase yearly = mockPhase(
+                ProductDetails.RecurrenceMode.INFINITE_RECURRING,
+                39_990_000L, "$39.99", "USD", "P1Y", 0);
+        ProductDetails.SubscriptionOfferDetails basePlan = mockOffer(null, "token", trial, yearly);
+        ProductDetails pd = mockSubsProduct("premium_yearly", "Premium Yearly", basePlan);
+
+        SkuDetails result = SkuDetails.fromProductDetails(pd);
+
+        assertEquals("P7D", result.subscriptionFreeTrialPeriod);
+        assertTrue("NON_RECURRING zero-price phase is a free trial", result.haveTrialPeriod);
+        assertEquals("P1Y", result.subscriptionPeriod);
+        assertEquals(39_990_000L, result.priceLong);
+        assertEquals(0L, result.introductoryPriceLong);
+    }
+
+    /**
+     * A single discounted up-front payment is also NON_RECURRING, but priced.
+     * It must land in the introductory fields, never in the trial fields.
+     */
+    @Test
+    public void subsWithNonRecurringIntroPrice_classifiesIntroNotTrial() throws JSONException
+    {
+        ProductDetails.PricingPhase intro = mockPhase(
+                ProductDetails.RecurrenceMode.NON_RECURRING,
+                990_000L, "$0.99", "USD", "P1M", 0);
+        ProductDetails.PricingPhase monthly = mockPhase(
+                ProductDetails.RecurrenceMode.INFINITE_RECURRING,
+                4_990_000L, "$4.99", "USD", "P1M", 0);
+        ProductDetails.SubscriptionOfferDetails basePlan = mockOffer(null, "token", intro, monthly);
+        ProductDetails pd = mockSubsProduct("premium", "Premium", basePlan);
+
+        SkuDetails result = SkuDetails.fromProductDetails(pd);
+
+        assertEquals(990_000L, result.introductoryPriceLong);
+        assertEquals("P1M", result.introductoryPricePeriod);
+        assertFalse("priced phase must not be treated as a free trial", result.haveTrialPeriod);
+        assertEquals("", result.subscriptionFreeTrialPeriod);
+        assertEquals(4_990_000L, result.priceLong);
+    }
+
     @Test
     public void subsWithIntroPrice_classifiesIntroAndRegular() throws JSONException
     {
@@ -242,6 +295,92 @@ public class SkuDetailsFromProductDetailsTest
         // Base plan wins even though it's second in the list.
         assertEquals("token-base", result.offerToken);
         assertEquals(4_990_000L, result.priceLong);
+    }
+
+    /**
+     * From Billing 5 on a free trial is a separate offer with a non-null
+     * offerId, not a property of the base plan. Preferring the base plan
+     * dropped the trial for users who were eligible for it.
+     */
+    @Test
+    public void subsTrialOffer_winsOverBasePlan() throws JSONException
+    {
+        ProductDetails.PricingPhase basePhase = mockPhase(
+                ProductDetails.RecurrenceMode.INFINITE_RECURRING,
+                4_990_000L, "$4.99", "USD", "P1M", 0);
+        ProductDetails.PricingPhase trialPhase = mockPhase(
+                ProductDetails.RecurrenceMode.NON_RECURRING,
+                0L, "Free", "USD", "P7D", 0);
+        ProductDetails.PricingPhase afterTrial = mockPhase(
+                ProductDetails.RecurrenceMode.INFINITE_RECURRING,
+                4_990_000L, "$4.99", "USD", "P1M", 0);
+
+        ProductDetails.SubscriptionOfferDetails basePlan =
+                mockOffer(null, "token-base", basePhase);
+        ProductDetails.SubscriptionOfferDetails trialOffer =
+                mockOffer("freetrial", "token-trial", trialPhase, afterTrial);
+        ProductDetails pd = mockSubsProduct("premium", "Premium", basePlan, trialOffer);
+
+        SkuDetails result = SkuDetails.fromProductDetails(pd);
+
+        assertEquals("token-trial", result.offerToken);
+        assertTrue("eligible trial must be reported", result.haveTrialPeriod);
+        assertEquals("P7D", result.subscriptionFreeTrialPeriod);
+        assertEquals(4_990_000L, result.priceLong);
+    }
+
+    /**
+     * No trial on offer, but a discounted introductory one: that still beats the
+     * plain base plan, and its token must be the one used for the purchase.
+     */
+    @Test
+    public void subsIntroOffer_winsOverBasePlanWhenNoTrial() throws JSONException
+    {
+        ProductDetails.PricingPhase basePhase = mockPhase(
+                ProductDetails.RecurrenceMode.INFINITE_RECURRING,
+                4_990_000L, "$4.99", "USD", "P1M", 0);
+        ProductDetails.PricingPhase introPhase = mockPhase(
+                ProductDetails.RecurrenceMode.FINITE_RECURRING,
+                990_000L, "$0.99", "USD", "P1M", 3);
+        ProductDetails.PricingPhase afterIntro = mockPhase(
+                ProductDetails.RecurrenceMode.INFINITE_RECURRING,
+                4_990_000L, "$4.99", "USD", "P1M", 0);
+
+        ProductDetails.SubscriptionOfferDetails basePlan =
+                mockOffer(null, "token-base", basePhase);
+        ProductDetails.SubscriptionOfferDetails introOffer =
+                mockOffer("intro3m", "token-intro", introPhase, afterIntro);
+        ProductDetails pd = mockSubsProduct("premium", "Premium", basePlan, introOffer);
+
+        SkuDetails result = SkuDetails.fromProductDetails(pd);
+
+        assertEquals("token-intro", result.offerToken);
+        assertEquals(990_000L, result.introductoryPriceLong);
+        assertEquals(3, result.introductoryPriceCycles);
+        assertFalse("intro price is not a free trial", result.haveTrialPeriod);
+    }
+
+    /**
+     * The ineligible case seen in the field: Play returns only the base plan,
+     * so the trial fields must come back empty rather than invented. Callers
+     * have to tolerate that -- it is normal from Billing 5 on.
+     */
+    @Test
+    public void subsIneligibleUser_onlyBasePlan_reportsNoTrial() throws JSONException
+    {
+        ProductDetails.PricingPhase basePhase = mockPhase(
+                ProductDetails.RecurrenceMode.INFINITE_RECURRING,
+                5_490_000L, "5,49 EUR", "EUR", "P1Y", 0);
+        ProductDetails.SubscriptionOfferDetails basePlan =
+                mockOffer(null, "token-base", basePhase);
+        ProductDetails pd = mockSubsProduct("yearly_payment", "Yearly", basePlan);
+
+        SkuDetails result = SkuDetails.fromProductDetails(pd);
+
+        assertFalse(result.haveTrialPeriod);
+        assertEquals("", result.subscriptionFreeTrialPeriod);
+        assertEquals("P1Y", result.subscriptionPeriod);
+        assertEquals(5_490_000L, result.priceLong);
     }
 
     @Test

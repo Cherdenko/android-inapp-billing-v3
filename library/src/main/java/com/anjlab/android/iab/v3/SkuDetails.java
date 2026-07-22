@@ -171,7 +171,7 @@ public class SkuDetails implements Parcelable
             List<ProductDetails.SubscriptionOfferDetails> offers = pd.getSubscriptionOfferDetails();
             if (offers != null && !offers.isEmpty())
             {
-                ProductDetails.SubscriptionOfferDetails offer = pickBaseOrFirstOffer(offers);
+                ProductDetails.SubscriptionOfferDetails offer = pickBestOffer(offers);
                 offerTokenLocal = offer.getOfferToken();
 
                 ProductDetails.PricingPhase regular = null;
@@ -188,16 +188,21 @@ public class SkuDetails implements Parcelable
                     {
                         regular = pp;
                     }
-                    else if (mode == ProductDetails.RecurrenceMode.FINITE_RECURRING)
+                    else if (micros == 0L)
                     {
-                        if (micros == 0L)
-                        {
-                            trial = pp;
-                        }
-                        else
-                        {
-                            intro = pp;
-                        }
+                        // Free trial. Play reports these as NON_RECURRING for a plain
+                        // one-off trial, but as FINITE_RECURRING with a cycle count of 1
+                        // for some configurations. Classifying on the price instead of
+                        // the recurrence mode covers both; keying on FINITE_RECURRING
+                        // alone silently dropped every NON_RECURRING trial, leaving
+                        // subscriptionFreeTrialPeriod empty and haveTrialPeriod false.
+                        trial = pp;
+                    }
+                    else
+                    {
+                        // Paid introductory phase, either repeating (FINITE_RECURRING)
+                        // or a single discounted payment (NON_RECURRING).
+                        intro = pp;
                     }
                 }
                 // Fallback: if there's no INFINITE_RECURRING phase (e.g. installment plans),
@@ -234,15 +239,75 @@ public class SkuDetails implements Parcelable
     }
 
     @NonNull
-    private static ProductDetails.SubscriptionOfferDetails pickBaseOrFirstOffer(
+    /**
+     * Picks the offer to represent this subscription in the legacy
+     * {@link SkuDetails} shape, and to launch the purchase flow with.
+     *
+     * <p>Preference order: an offer carrying a free trial, then one carrying a
+     * discounted introductory phase, then the base plan, then whatever came
+     * first.
+     *
+     * <p>Before Play Billing 5 a subscription's free trial and introductory
+     * price were properties of the SKU itself, and Play applied whichever the
+     * user was eligible for automatically. From Billing 5 on they live in
+     * <em>separate offers</em>, identified by a non-null {@code offerId}, and
+     * the caller has to pass that offer's token to receive them. Preferring the
+     * base plan (a null {@code offerId}) therefore discarded every trial and
+     * introductory offer: {@code haveTrialPeriod} came back false for users who
+     * were in fact eligible, and purchases silently charged full price.
+     * Selecting the best available offer restores the pre-3.0 behaviour.
+     *
+     * <p>Note this can only surface what Play actually returns.
+     * {@code getSubscriptionOfferDetails()} is filtered by user eligibility, so
+     * a user who has already consumed the trial gets the base plan alone and
+     * the trial fields stay empty. That difference is inherent to Billing 5+
+     * and cannot be translated away.
+     */
+    static ProductDetails.SubscriptionOfferDetails pickBestOffer(
             @NonNull List<ProductDetails.SubscriptionOfferDetails> offers)
     {
+        ProductDetails.SubscriptionOfferDetails withTrial = null;
+        ProductDetails.SubscriptionOfferDetails withIntro = null;
+        ProductDetails.SubscriptionOfferDetails basePlan = null;
+
         for (ProductDetails.SubscriptionOfferDetails offer : offers)
         {
-            if (offer.getOfferId() == null)
+            for (ProductDetails.PricingPhase phase : offer.getPricingPhases().getPricingPhaseList())
             {
-                return offer;
+                if (phase.getPriceAmountMicros() == 0L)
+                {
+                    if (withTrial == null)
+                    {
+                        withTrial = offer;
+                    }
+                }
+                else if (phase.getRecurrenceMode()
+                        != ProductDetails.RecurrenceMode.INFINITE_RECURRING)
+                {
+                    if (withIntro == null)
+                    {
+                        withIntro = offer;
+                    }
+                }
             }
+
+            if (basePlan == null && offer.getOfferId() == null)
+            {
+                basePlan = offer;
+            }
+        }
+
+        if (withTrial != null)
+        {
+            return withTrial;
+        }
+        if (withIntro != null)
+        {
+            return withIntro;
+        }
+        if (basePlan != null)
+        {
+            return basePlan;
         }
         return offers.get(0);
     }

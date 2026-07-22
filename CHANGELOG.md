@@ -13,6 +13,14 @@
   mode) from `ERROR` to `BILLING_UNAVAILABLE`. The library passes billing
   response codes through unchanged, so handlers branching on the old code
   for that scenario need updating.
+* **Free trial and introductory price fields can now legitimately be empty.**
+  From Play Billing 5 on, trials and introductory prices are separate offers
+  and `getSubscriptionOfferDetails()` only returns what the signed-in user is
+  eligible for. `subscriptionFreeTrialPeriod` / `introductoryPrice*` therefore
+  come back empty for users who already consumed the trial, where the pre-3.0
+  API reported the SKU's configured values regardless. Callers that feed these
+  straight into a parser will crash for those users — see
+  [UPGRADING.md](UPGRADING.md#upgrading-from-22-to-30).
 
 #### Features
 
@@ -47,6 +55,24 @@
 
 #### Bug Fixes
 
+* Report the owned-purchases cache even when the billing client connects on
+  its own. `enableAutoServiceReconnection()` can bring the connection up
+  without `BillingClientStateListener` ever firing, and
+  `HistoryInitializationTask` hung off that callback exclusively. When it
+  didn't run, `isPurchased()` stayed `false` and `onBillingInitialized()`
+  never fired, so callers pushed users into a fresh purchase for a product
+  they already owned (answered with `ITEM_ALREADY_OWNED`). `initialize()` now
+  schedules the task itself when the client is already ready.
+* Stop discarding free trial and introductory offers. Offer selection
+  preferred the base plan (null `offerId`), but from Billing 5 on trials and
+  introductory prices live in *separate* offers with a non-null `offerId`.
+  Eligible users were reported as having no trial and were charged full price
+  on purchase. Selection now prefers a trial, then an introductory offer, then
+  the base plan, consistently in both `SkuDetails` translation and the
+  purchase flow.
+* Classify pricing phases by price rather than recurrence mode. A plain
+  one-off free trial is `NON_RECURRING`, which the previous `FINITE_RECURRING`
+  check dropped entirely, as it did single-payment introductory phases.
 * Fix `NullPointerException` in `checkMerchant` when Google returns
   `ITEM_ALREADY_OWNED` but neither local cache has a `PurchaseInfo`
   record ([#512](https://github.com/anjlab/android-inapp-billing-v3/issues/512),
