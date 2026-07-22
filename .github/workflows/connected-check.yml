@@ -41,8 +41,6 @@ jobs:
           # here produced `""""` in BuildConfig.java, which javac rejects as a
           # malformed text block.
           echo 'licenceKey=' > local.properties
-          echo 'android.useAndroidX=true' >> gradle.properties
-          echo 'android.enableJetifier=true' >> gradle.properties
 
       - name: Assemble and run JVM checks
         run: ./gradlew assembleDebug :library:test :library:checkstyle
@@ -69,8 +67,6 @@ jobs:
       - name: Set up build properties
         run: |
           echo 'licenceKey=' > local.properties
-          echo 'android.useAndroidX=true' >> gradle.properties
-          echo 'android.enableJetifier=true' >> gradle.properties
 
       - name: Run connectedCheck
         uses: reactivecircus/android-emulator-runner@v2
