@@ -1,5 +1,5 @@
 # Android In-App Billing v3 Library [![Build Status](https://github.com/anjlab/android-inapp-billing-v3/actions/workflows/connected-check.yml/badge.svg)](https://github.com/anjlab/android-inapp-billing-v3/actions/workflows/connected-check.yml)  [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.anjlab.android.iab.v3/library/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.anjlab.android.iab.v3/library)
-This is a simple, straight-forward wrapper around **Google Play Billing Library 8.x**.
+This is a simple, straight-forward wrapper around **Google Play Billing Library 9.x**.
 
 It supports: In-App Product Purchases (both non-consumable and consumable) and Subscriptions.
 
@@ -11,12 +11,12 @@ For now only pull requests of external contributors are being reviewed, accepted
 
 If you are interesting in giving this project some :heart:, please chime in!
 
-## Play Billing 8.x Upgrade Notice
+## Play Billing 9.x Upgrade Notice
 
-This library now targets `com.android.billingclient:billing:8.3.0`. The legacy
+This library now targets `com.android.billingclient:billing:9.1.0`. The legacy
 `SkuDetails` type and the `getPurchaseListingDetailsAsync` / `getSubscriptionListingDetailsAsync`
 methods are preserved for source-compatibility but are marked `@Deprecated` —
-under the hood they translate from Play Billing 8's `ProductDetails`, which flattens
+under the hood they translate from Play Billing 9's `ProductDetails`, which flattens
 multi-offer subscriptions down to a single base plan. Consumers that need
 multiple promotional offers, pricing phases, or base-plan-aware flows should
 migrate to the new `ProductDetails`-based API — see the [3.0.0 CHANGELOG
@@ -26,6 +26,8 @@ guide](UPGRADING.md#upgrading-from-22-to-30) for the full walkthrough.
 **Breaking change (2.x → 3.0)**: `minSdkVersion` is now **23** (Android 6.0).
 Play Billing 8.1 dropped support for API 21–22, so consumers still shipping to
 those levels must pin to `2.2.0` or upgrade their own `minSdkVersion`.
+Play Billing 9.x additionally requires consumers to build against
+**`compileSdk 35+`** (it depends on `androidx.core:1.15.0`, which enforces this).
 
 Older history: this was originally Google's v2 Billing API implementation —
 source archived [here](https://github.com/anjlab/android-inapp-billing-v3/tree/v2_billing_1_1_0).
@@ -34,7 +36,7 @@ history: [CHANGELOG.md](CHANGELOG.md).
 
 ## Getting Started
 
-* Your project must build against `compileSdk 34+` and `minSdk 23+` (Android 6.0 Marshmallow).
+* Your project must build against `compileSdk 35+` and `minSdk 23+` (Android 6.0 Marshmallow).
 
 * Add this library via Gradle:
 ```groovy

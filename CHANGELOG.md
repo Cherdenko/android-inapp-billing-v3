@@ -5,11 +5,18 @@
 * **`minSdkVersion` raised 21 → 23.** Google Play Billing Library 8.1+
   dropped support for API 21–22. Consumers shipping to those levels must
   pin this library at `2.2.0` or raise their own `minSdkVersion`.
-* Targets `com.android.billingclient:billing:8.3.0` (up from `7.0.0`).
+* **Consumers must now build against `compileSdk 35+`** (up from `34`).
+  Play Billing 9.x depends on `androidx.core:1.15.0`, which declares
+  `minCompileSdk=35`.
+* Targets `com.android.billingclient:billing:9.1.0` (up from `7.0.0`).
+* Play Billing 9.0 reclassified a system-blocked Play Store (e.g. OEM kids
+  mode) from `ERROR` to `BILLING_UNAVAILABLE`. The library passes billing
+  response codes through unchanged, so handlers branching on the old code
+  for that scenario need updating.
 
 #### Features
 
-* New `ProductDetails`-based public API exposing the full Billing Library 8
+* New `ProductDetails`-based public API exposing the full Billing Library 9
   product surface (subscription offer trees, base plans, pricing phases,
   multiple promotional offers):
     - `IProductDetailsResponseListener` returning `List<ProductDetails>`
@@ -29,7 +36,7 @@
 
 * The legacy `com.anjlab.android.iab.v3.SkuDetails` type and everything
   that returns or consumes it is now `@Deprecated`. These keep working via
-  a translator that flattens Billing 8 `ProductDetails` into the legacy
+  a translator that flattens Billing 9 `ProductDetails` into the legacy
   JSON shape, but the translation is **lossy for multi-offer subscriptions**
   — only the base plan is surfaced. Affected:
     - `com.anjlab.android.iab.v3.SkuDetails`
@@ -90,7 +97,15 @@
 
 * Gradle `7.5` → `9.0.0`
 * Android Gradle Plugin `7.4.2` → `8.11.1`
-* `buildToolsVersion` `30.0.3` → `34.0.0`
+* `compileSdk` / `targetSdk` `34` → `35` (required by Play Billing 9.x via
+  `androidx.core:1.15.0`)
+* `buildToolsVersion` `30.0.3` → `35.0.0`
+* Added `kotlin-stdlib-jdk7`/`-jdk8` `1.8.22` dependency constraints,
+  exported as `api` so consumers inherit them. Play Billing 9.x pulls
+  `kotlin-stdlib:1.8.22` (via `androidx.core:1.15.0`) alongside
+  `kotlinx-coroutines:1.6.4`, which still requests the `1.6.21` jdk7/jdk8
+  artifacts; since Kotlin 1.8 folded those into `kotlin-stdlib`, the stale
+  copies collide and fail `checkDebugDuplicateClasses`.
 * Billing dependency is now `api`, not `implementation`, because the new
   public API exposes billing-client types in its signatures.
 * Removed the Gradle-9-incompatible `hierynomus` license plugin.

@@ -27,9 +27,9 @@ android {
         versionCode 6
         versionName '6.0'
         minSdkVersion 23
-        targetSdkVersion 34
-        compileSdk = 34
-        buildToolsVersion = '34.0.0'
+        targetSdkVersion 35
+        compileSdk = 35
+        buildToolsVersion = '35.0.0'
 
         buildConfigField "String", "licenceKey", "\"${playLicenceKey}\""
     }
