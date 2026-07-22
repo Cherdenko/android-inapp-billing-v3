@@ -3,7 +3,7 @@
 ### Upgrading from 2.2 to 3.0
 
 **TL;DR**: This release updates `com.android.billingclient:billing` from
-`7.0.0` to `8.3.0`. **The everyday purchase API is unchanged** — code that
+`7.0.0` to `9.1.0`. **The everyday purchase API is unchanged** — code that
 just calls `bp.purchase(activity, productId)` / `bp.subscribe(activity, productId)`
 compiles and runs exactly as before, the new billing client is wired up
 under the hood. You only need to touch your code if you were using
@@ -13,9 +13,21 @@ under the hood. You only need to touch your code if you were using
 
 1. **Raise `minSdkVersion` to 23.** Play Billing `8.1+` no longer supports
    API 21–22. If you must stay on those levels, pin this library at `2.2.0`.
-2. **Ensure `compileSdk` is at least 34** if you haven't already.
+2. **Raise `compileSdk` to at least 35.** Play Billing `9.x` depends on
+   `androidx.core:1.15.0`, whose AAR metadata declares `minCompileSdk=35`.
+   Building against `34` fails at `checkDebugAarMetadata`. Note this is
+   independent of `targetSdk` — you can raise `compileSdk` without opting
+   into Android 15 runtime behavior.
 3. **Use a modern AGP.** Any consumer AGP `8.1+` can consume the new `aar`
    without further changes.
+
+#### One behavior change to be aware of
+
+Play Billing `9.0` reclassified the case where the Play Store app is blocked
+by the system (for example, OEM-customized kids mode) from `BILLING_RESPONSE_RESULT_ERROR`
+to `BILLING_UNAVAILABLE`. If your `IBillingHandler.onBillingError` branches on
+the specific error code for that scenario, update it — the library passes the
+code through unchanged.
 
 That's it for most apps — the following sections only apply if you read
 product details directly.
@@ -28,7 +40,7 @@ bp.subscribe(activity, productId);     // subscription
 bp.updateSubscription(activity, oldProductId, newProductId);
 ```
 
-These signatures are unchanged from 2.x. They now fetch Billing 8
+These signatures are unchanged from 2.x. They now fetch Billing 9
 `ProductDetails` internally instead of `SkuDetails`, and for subscriptions
 the library automatically picks the base-plan offer (falling back to the
 first available offer) when launching the flow. No code change required.
@@ -38,7 +50,7 @@ first available offer) when launching the flow. No code change required.
 If your app calls `getPurchaseListingDetailsAsync` or
 `getSubscriptionListingDetailsAsync` to render prices or offers, those
 methods and the `SkuDetails` type they return are now `@Deprecated`. They
-keep working — backed internally by a translator from Billing 8
+keep working — backed internally by a translator from Billing 9
 `ProductDetails` — but the translation **collapses multi-offer
 subscriptions to a single offer** (preferring the base plan), so you lose
 access to promotional offers, alternative pricing phases, and their offer
@@ -59,7 +71,7 @@ bp.getSubscriptionListingDetailsAsync(productId, new BillingProcessor.ISkuDetail
 });
 ```
 
-**After** (Billing 8 native):
+**After** (Billing 9 native):
 
 ```java
 bp.getSubscriptionProductDetailsAsync(productId, new BillingProcessor.IProductDetailsResponseListener() {
@@ -106,9 +118,10 @@ hold the details.
   still uses the implicit default replacement mode (`WITH_TIME_PRORATION`),
   matching pre-3.0 behavior — explicitly set a different mode if you need
   one.
-* `BillingClient.BillingResponseCode` values are unchanged between Billing
-  7 and 8.3, so `IBillingHandler.onBillingError(int, Throwable)` consumers
-  don't need to change anything.
+* `BillingClient.BillingResponseCode` values themselves are unchanged
+  between Billing 7 and 9.1, so `IBillingHandler.onBillingError(int, Throwable)`
+  consumers don't need to change anything — with the single exception of the
+  blocked-Play-Store reclassification noted above.
 * Owned purchases are now re-queried from Google on **every** init, not
   only on the first-ever restore. This makes refunds eventually show up
   in `isPurchased()` without consumers needing to call
