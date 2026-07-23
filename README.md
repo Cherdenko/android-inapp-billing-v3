@@ -235,6 +235,53 @@ Call `bp.getSubscriptionPurchaseInfo(...)` and check the `purchaseData.autoRenew
 It will be set to `False` once subscription gets cancelled.
 Also notice, that you will need to call periodically `bp.loadOwnedPurchasesFromGoogleAsync()` method in order to update subscription information
 
+## Handling Pending Purchases (and the subscription "it never confirms" race)
+
+Not every purchase is entitled the moment the buyer taps *Buy*. Deferred payment
+methods (cash-at-counter, carrier billing), **slow credit-card authorization**, and
+**subscriptions** — which Google often takes longer to clear than a one-time product —
+first arrive in the **`PENDING`** state. A pending purchase is **not** yet owned, so it
+is reported through `onPurchasePending(...)`, **not** `onProductPurchased(...)`.
+
+`onPurchasePending` is a `default` no-op on `IBillingHandler`; if you don't override it,
+a pending purchase is silently swallowed and your UI shows nothing.
+
+The purchase later transitions to `PURCHASED`. That transition is delivered **either**
+via `onProductPurchased(...)` on the *next* `onPurchasesUpdated` event, **or** on the
+next `bp.loadOwnedPurchasesFromGoogleAsync(...)` (e.g. the next `initialize()`). So a
+screen that only reacts to the real-time `onProductPurchased` callback and gates on
+`purchaseState == PurchasedSuccessfully` can miss the transition entirely: the buyer
+completes payment, sees no confirmation on that screen, and the purchase only "appears"
+later elsewhere in the app (or on the next launch) when something happens to re-query.
+The race hides well because fast one-time purchases usually win it and clear before you
+look — subscriptions and slow-auth cards lose it.
+
+To handle it robustly:
+
+1. **Override `onPurchasePending`** and surface a "payment processing" state — do **not**
+   grant entitlement there.
+2. **Re-query owned purchases when the screen resumes / is returned to**, and refresh your
+   purchase UI from the result rather than relying only on the one-shot callback:
+
+   ```java
+   @Override
+   public void onResume() {
+       super.onResume();
+       if (bp != null && bp.isInitialized()) {
+           bp.loadOwnedPurchasesFromGoogleAsync(new IPurchasesResponseListener() {
+               @Override public void onPurchasesSuccess() { refreshPurchaseUi(); }
+               @Override public void onPurchasesError()   { /* keep last known state */ }
+           });
+       }
+   }
+   ```
+
+3. **Keep only one active `BillingProcessor` (BillingClient) at a time.** Google delivers
+   `onPurchasesUpdated` to the client that launched the flow; if several clients are
+   connected on the same license key, the update can land on the wrong handler.
+   Re-querying on resume (step 2) also makes your UI correct regardless of which client
+   received the real-time callback.
+
 ## Promo Codes Support
 
 You can use promo codes along with this library. Promo codes can be entered in the purchase dialog or in the Google Play app. The URL https://play.google.com/redeem?code=YOUR_PROMO_CODE will launch the Google Play app with the promo code already entered. This could come in handy if you want to give users the option to enter a promo code within your app.
